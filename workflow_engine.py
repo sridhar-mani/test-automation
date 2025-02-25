@@ -17,7 +17,6 @@ class WorkflowEngine:
         results = {}
 
         for task in ordered_tasks:
-            # Check if all dependencies succeeded; if not, skip the task.
             if any(dep.task_id not in results or results[dep.task_id]['status'] != 'success'
                    for dep in task.dependencies):
                 self.logger.info(f"Skipping task {task.id} due to unmet dependencies")
