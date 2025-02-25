@@ -1,0 +1,271 @@
+{
+    "metadata": {
+        "name": "Enhanced Data Processing Workflow",
+        "description": "Comprehensive data pipeline with advanced features",
+        "version": "1.0",
+        "owner": "data_engineering_team",
+        "tags": ["data", "analytics", "advanced_workflow"],
+        "project": "data_analytics",
+        "environment": "production"
+    },
+    "workflow_settings": {
+        "execution_mode": {
+            "type": "sequential",
+            "max_parallel_tasks": 3
+        },
+        "error_handling": {
+            "strategy": "fail_fast",
+            "max_failures_threshold": 2,
+            "notification_channels": [
+                {
+                    "type": "email",
+                    "recipients": ["admin@example.com", "data_team@example.com"]
+                },
+                {
+                    "type": "slack",
+                    "webhook_url": "https://hooks.slack.com/services/XXXXXXX"
+                }
+            ]
+        },
+        "retry_policy": {
+            "global_max_attempts": 3,
+            "default_delay": 60,
+            "backoff_strategy": "exponential"
+        },
+        "scheduling": {
+            "type": "cron",
+            "expression": "0 2 * * *",
+            "timezone": "UTC",
+            "start_date": "2024-01-01",
+            "end_date": null,
+            "catchup": false
+        }
+    },
+    "global_environment": {
+        "python_version": "3.9",
+        "virtual_env": true,
+        "shared_volumes": [
+            {
+                "host_path": "./data",
+                "container_path": "/app/data"
+            }
+        ],
+        "environment_vars": {
+            "PYTHONPATH": ".",
+            "DATA_STORAGE_PATH": "./data"
+        },
+        "dependencies": ["pandas==1.3.3", "numpy==1.21.2", "requests==2.26.0"]
+    },
+    "tasks": [
+        {
+            "id": "fetch_data",
+            "name": "Download Raw Data",
+            "type": "python",
+            "command": "./example_script.py",
+            "function_name": "download_dataset",
+            "description": "Download raw data from external source",
+            "args": {
+                "source_url": "https://example.com/dataset",
+                "output_path": "./data/raw"
+            },
+            "advanced_config": {
+                "trigger_rule": "all_success",
+                "priority": 1,
+                "queue": "data_fetch_queue"
+            },
+            "branching": {
+                "on_success": "clean_data",
+                "on_failure": {
+                    "action": "alternate_source",
+                    "fallback_task": "fetch_backup_data"
+                }
+            },
+            "resources": {
+                "cpu": 2,
+                "memory": "4GB",
+                "network": true,
+                "gpu": false,
+                "container_config": {
+                    "image": "data-fetch-image:latest",
+                    "pull_policy": "always"
+                }
+            },
+            "retry_config": {
+                "max_attempts": 3,
+                "delay_between_attempts": 60,
+                "allowed_exceptions": ["NetworkError", "DownloadError"],
+                "backoff_strategy": "exponential"
+            },
+            "timeout": 300,
+            "tags": ["data_fetch", "external_source"],
+            "sensors": [
+                {
+                    "type": "file_sensor",
+                    "path": "./external_data_trigger.txt",
+                    "mode": "reschedule"
+                }
+            ]
+        },
+        {
+            "id": "clean_data",
+            "name": "Data Cleaning",
+            "type": "python",
+            "command": "data_scripts/data_cleaner.py",
+            "function_name": "clean_dataset",
+            "description": "Clean and preprocess raw data",
+            "dependencies": ["fetch_data"],
+            "args": {
+                "input_path": "./data/raw",
+                "output_path": "./data/cleaned"
+            },
+            "advanced_config": {
+                "trigger_rule": "all_success",
+                "priority": 2,
+                "queue": "data_processing_queue"
+            },
+            "branching": {
+                "on_success": "generate_report",
+                "on_failure": {
+                    "action": "notify",
+                    "message": "Data cleaning failed"
+                }
+            },
+            "resources": {
+                "cpu": 4,
+                "memory": "8GB",
+                "container_config": {
+                    "image": "data-clean-image:latest"
+                }
+            },
+            "timeout": 600,
+            "tags": ["data_preparation", "cleaning"],
+            "validation_checks": [
+                {
+                    "type": "data_quality",
+                    "checks": [
+                        "no_null_values",
+                        "consistent_types",
+                        "value_range_check"
+                    ]
+                }
+            ]
+        },
+        {
+            "id": "generate_report",
+            "name": "Create Analysis Report",
+            "type": "python",
+            "command": "reporting/generate_report.py",
+            "function_name": "create_report",
+            "description": "Generate comprehensive data analysis report",
+            "dependencies": ["clean_data"],
+            "args": {
+                "input_path": "./data/cleaned",
+                "output_path": "./reports"
+            },
+            "advanced_config": {
+                "trigger_rule": "all_success",
+                "priority": 3,
+                "queue": "reporting_queue"
+            },
+            "branching": {
+                "on_success": "upload_report",
+                "on_failure": {
+                    "action": "email_alert",
+                    "recipients": ["manager@example.com"]
+                }
+            },
+            "resources": {
+                "cpu": 2,
+                "memory": "4GB"
+            },
+            "timeout": 300,
+            "tags": ["reporting", "analysis"],
+            "output_checking": {
+                "min_file_size": "10KB",
+                "max_file_size": "10MB",
+                "required_content_checks": [
+                    "summary_section",
+                    "data_visualization"
+                ]
+            }
+        },
+        {
+            "id": "upload_report",
+            "name": "Upload Report to Cloud",
+            "type": "shell",
+            "command": "aws s3 cp ./reports/latest_report.pdf s3://my-bucket/reports/",
+            "description": "Upload generated report to cloud storage",
+            "dependencies": ["generate_report"],
+            "advanced_config": {
+                "trigger_rule": "all_success",
+                "priority": 4,
+                "queue": "upload_queue"
+            },
+            "branching": {
+                "on_success": "notify_completion",
+                "on_failure": {
+                    "action": "retry_with_alternate_method",
+                    "fallback_command": "gsutil cp ./reports/latest_report.pdf gs://my-bucket/reports/"
+                }
+            },
+            "retry_config": {
+                "max_attempts": 3,
+                "delay_between_attempts": 30
+            },
+            "tags": ["cloud_upload", "reporting"],
+            "external_systems_integration": {
+                "s3_bucket": "my-bucket",
+                "credentials_secret": "AWS_S3_UPLOAD_CREDENTIALS"
+            }
+        }
+    ],
+    "monitoring": {
+        "metrics": [
+            "execution_time",
+            "task_success_rate",
+            "data_volume_processed"
+        ],
+        "logging": {
+            "level": "INFO",
+            "output_file": "./logs/workflow.log",
+            "retention_days": 30
+        },
+        "alerting": {
+            "thresholds": {
+                "max_execution_time": "2h",
+                "min_success_rate": 0.9
+            }
+        }
+    },
+    "security": {
+        "access_control": {
+            "roles": [
+                {
+                    "name": "data_engineer",
+                    "permissions": ["view", "execute", "modify"]
+                },
+                {
+                    "name": "analyst",
+                    "permissions": ["view"]
+                }
+            ],
+            "authentication": {
+                "type": "jwt",
+                "provider": "internal"
+            }
+        },
+        "data_masking": {
+            "sensitive_fields": ["user_id", "email"],
+            "masking_strategy": "hash"
+        }
+    },
+    "compliance": {
+        "gdpr": true,
+        "hipaa": false,
+        "data_retention_policy": {
+            "raw_data": "7 days",
+            "processed_data": "30 days",
+            "reports": "90 days"
+        }
+    }
+}
